@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import requests
-import os
 
 app = FastAPI(title="Flatway UK Property Search")
 
@@ -58,43 +57,49 @@ def autocomplete(q: str = Query(..., description="Address search query")):
 
 @app.get("/property/{uprn}")
 def get_property_by_uprn(uprn: int):
-    data = homedata_get(f"/properties/{uprn}/")
-    if not data:
-        raise HTTPException(status_code=503, detail="Homedata API unavailable")
-    if "data" in data:
-        prop_data = data["data"]
-    elif "uprn" in data:
-        prop_data = data
-    else:
+    # Call both endpoints and merge
+    prop_data = homedata_get(f"/properties/{uprn}/")
+    addr_data = homedata_get(f"/address/retrieve/{uprn}/")
+
+    if not prop_data and not addr_data:
         raise HTTPException(status_code=404, detail="Property not found")
-    prop = format_property(prop_data)
+
+    # Merge both responses
+    merged = {}
+    if prop_data:
+        merged.update(prop_data)
+    if addr_data:
+        merged.update(addr_data)
+
+    prop = {
+        "uprn": merged.get("uprn"),
+        "full_address": merged.get("full_address"),
+        "address_line_1": merged.get("address_line_1"),
+        "postcode": merged.get("postcode"),
+        "street_name": merged.get("street_name"),
+        "building_number": merged.get("building_number"),
+        "town": merged.get("town_name"),
+        "property_type": merged.get("property_type"),
+        "floor_area_sqm": merged.get("epc_floor_area"),
+        "epc_rating": merged.get("current_energy_rating"),
+        "epc_score": merged.get("current_energy_efficiency"),
+        "predicted_price": merged.get("predicted_price"),
+        "last_sold_date": merged.get("last_sold_date"),
+        "last_sold_price": merged.get("last_sold_price"),
+        "coordinates": {
+            "lat": merged.get("latitude"),
+            "lon": merged.get("longitude"),
+        } if merged.get("latitude") else None,
+    }
+
+    # Fetch price history
     sales = homedata_get(f"/properties/{uprn}/sales/")
     if sales and "results" in sales:
         prop["price_history"] = [{"date": s.get("transaction_date"), "price": s.get("price"), "tenure": s.get("tenure")} for s in sales["results"][:10]]
     else:
         prop["price_history"] = []
-    return {"property": prop}
 
-def format_property(data: dict) -> dict:
-    return {
-        "uprn": data.get("uprn"),
-        "full_address": data.get("full_address"),
-        "address": data.get("address"),
-        "postcode": data.get("postcode"),
-        "street_name": data.get("street_name"),
-        "town": data.get("town_name"),
-        "property_type": data.get("property_type"),
-        "bedrooms": data.get("bedrooms"),
-        "bathrooms": data.get("bathrooms"),
-        "floor_area_sqm": data.get("internal_area_sqm") or data.get("epc_floor_area"),
-        "epc_rating": data.get("current_energy_rating"),
-        "tenure": data.get("tenure"),
-        "council_tax_band": data.get("council_tax_band"),
-        "has_garden": data.get("has_garden"),
-        "last_sold_date": data.get("last_sold_date"),
-        "last_sold_price": data.get("last_sold_price"),
-        "coordinates": {"lat": data.get("latitude"), "lon": data.get("longitude")} if data.get("latitude") else None,
-    }
+    return {"property": prop}
 
 @app.get("/search/address")
 def search_by_address(q: str = Query(..., description="Full address or postcode")):
