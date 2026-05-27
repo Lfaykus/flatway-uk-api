@@ -57,9 +57,7 @@ def autocomplete(q: str = Query(..., description="Address search query")):
 
 @app.get("/property/{uprn}")
 def get_property_by_uprn(uprn: int):
-    # Call 1 — property details
     prop_data = homedata_get(f"/properties/{uprn}/")
-    # Call 2 — address + coordinates
     addr_data = homedata_get(f"/address/retrieve/{uprn}/")
 
     if not prop_data and not addr_data:
@@ -70,14 +68,6 @@ def get_property_by_uprn(uprn: int):
         merged.update(prop_data)
     if addr_data and "error" not in addr_data:
         merged.update(addr_data)
-
-    # Call 3 — air quality
-    air_quality = None
-    air_data = homedata_get("/risks/air_quality_today/", params={"uprn": uprn})
-    if air_data and "results" in air_data:
-        for r in air_data["results"]:
-            if "air" in r.get("risk_type", ""):
-                air_quality = {"label": r.get("label"), "score": r.get("score")}
 
     return {"property": {
         "uprn": merged.get("uprn"),
@@ -103,7 +93,6 @@ def get_property_by_uprn(uprn: int):
         "average_area_price": merged.get("average_area_price"),
         "last_sold_date": merged.get("last_sold_date"),
         "last_sold_price": merged.get("last_sold_price"),
-        "air_quality": air_quality,
     }}
 
 @app.get("/search/address")
