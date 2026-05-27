@@ -12,54 +12,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-HOMEDATA_API_KEY = os.getenv("HOMEDATA_API_KEY", "YOUR_KEY_HERE")
+HOMEDATA_API_KEY = os.getenv("HOMEDATA_API_KEY", "NOT_SET")
 HOMEDATA_BASE = "https://api.homedata.co.uk/api"
-HOMEDATA_HEADERS = {"Authorization": f"Api-Key {HOMEDATA_API_KEY}"}
 
 def homedata_get(endpoint: str, params: dict = None):
+    headers = {"Authorization": f"Api-Key {HOMEDATA_API_KEY}"}
     try:
         r = requests.get(
             f"{HOMEDATA_BASE}{endpoint}",
-            headers=HOMEDATA_HEADERS,
+            headers=headers,
             params=params,
             timeout=10,
         )
-        r.raise_for_status()
         return r.json()
     except Exception as e:
-        return None
-
-def format_property(data: dict) -> dict:
-    return {
-        "uprn": data.get("uprn"),
-        "full_address": data.get("full_address"),
-        "address": data.get("address"),
-        "postcode": data.get("postcode"),
-        "street_name": data.get("street_name"),
-        "town": data.get("town_name"),
-        "property_type": data.get("property_type"),
-        "built_form": data.get("built_form"),
-        "construction_age_band": data.get("construction_age_band"),
-        "bedrooms": data.get("bedrooms"),
-        "bathrooms": data.get("bathrooms"),
-        "floor_area_sqm": data.get("internal_area_sqm") or data.get("epc_floor_area"),
-        "epc_rating": data.get("current_energy_rating"),
-        "epc_score": data.get("current_energy_efficiency"),
-        "tenure": data.get("tenure"),
-        "council_tax_band": data.get("council_tax_band"),
-        "has_garden": data.get("has_garden"),
-        "has_parking": data.get("has_parking"),
-        "last_sold_date": data.get("last_sold_date"),
-        "last_sold_price": data.get("last_sold_price"),
-        "coordinates": {
-            "lat": data.get("latitude"),
-            "lon": data.get("longitude"),
-        } if data.get("latitude") else None,
-    }
+        return {"error": str(e)}
 
 @app.get("/")
 def root():
-    return {"status": "Flatway UK property API running"}
+    return {"status": "Flatway UK property API running", "key_set": HOMEDATA_API_KEY != "NOT_SET"}
+
+@app.get("/debug")
+def debug(q: str = "10 Downing Street"):
+    raw = homedata_get("/address/find/", params={"q": q, "limit": 3})
+    return {"raw_response": raw, "key_prefix": HOMEDATA_API_KEY[:6] if HOMEDATA_API_KEY != "NOT_SET" else "NOT_SET"}
 
 @app.get("/autocomplete")
 def autocomplete(q: str = Query(..., description="Address search query")):
@@ -67,7 +43,7 @@ def autocomplete(q: str = Query(..., description="Address search query")):
         return {"suggestions": [], "type": "address"}
     data = homedata_get("/address/find/", params={"q": q, "limit": 8})
     if not data or "suggestions" not in data:
-        return {"suggestions": [], "type": "address"}
+        return {"suggestions": [], "type": "address", "debug": data}
     suggestions = []
     seen = set()
     for item in data["suggestions"]:
@@ -101,6 +77,27 @@ def get_property_by_uprn(uprn: int):
     else:
         prop["price_history"] = []
     return {"property": prop}
+
+def format_property(data: dict) -> dict:
+    return {
+        "uprn": data.get("uprn"),
+        "full_address": data.get("full_address"),
+        "address": data.get("address"),
+        "postcode": data.get("postcode"),
+        "street_name": data.get("street_name"),
+        "town": data.get("town_name"),
+        "property_type": data.get("property_type"),
+        "bedrooms": data.get("bedrooms"),
+        "bathrooms": data.get("bathrooms"),
+        "floor_area_sqm": data.get("internal_area_sqm") or data.get("epc_floor_area"),
+        "epc_rating": data.get("current_energy_rating"),
+        "tenure": data.get("tenure"),
+        "council_tax_band": data.get("council_tax_band"),
+        "has_garden": data.get("has_garden"),
+        "last_sold_date": data.get("last_sold_date"),
+        "last_sold_price": data.get("last_sold_price"),
+        "coordinates": {"lat": data.get("latitude"), "lon": data.get("longitude")} if data.get("latitude") else None,
+    }
 
 @app.get("/search/address")
 def search_by_address(q: str = Query(..., description="Full address or postcode")):
