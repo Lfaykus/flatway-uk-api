@@ -66,11 +66,11 @@ def autocomplete(q: str = Query(..., description="Address search query")):
     if not q or len(q) < 3:
         return {"suggestions": [], "type": "address"}
     data = homedata_get("/address/find/", params={"q": q, "limit": 8})
-    if not data or "results" not in data:
+    if not data or ("results" not in data and "suggestions" not in data):
         return {"suggestions": [], "type": "address"}
     suggestions = []
     seen = set()
-    for item in data["results"]:
+    for item in (data.get("results") or data.get("suggestions", [])):
         uprn = item.get("uprn")
         label = item.get("display_address") or item.get("full_address")
         postcode = item.get("postcode", "")
@@ -105,7 +105,7 @@ def get_property_by_uprn(uprn: int):
 @app.get("/search/address")
 def search_by_address(q: str = Query(..., description="Full address or postcode")):
     data = homedata_get("/address/find/", params={"q": q, "limit": 20})
-    if not data or "results" not in data:
+    if not data or ("results" not in data and "suggestions" not in data):
         raise HTTPException(status_code=404, detail="No results found")
     results = [{"uprn": item.get("uprn"), "full_address": item.get("display_address") or item.get("full_address"), "postcode": item.get("postcode")} for item in data["results"]]
     return {"count": len(results), "properties": results}
