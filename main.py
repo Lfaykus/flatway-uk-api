@@ -57,21 +57,25 @@ def autocomplete(q: str = Query(..., description="Address search query")):
 
 @app.get("/property/{uprn}")
 def get_property_by_uprn(uprn: int):
-    # Call both endpoints and merge
+    # Call all three endpoints in parallel-ish
     prop_data = homedata_get(f"/properties/{uprn}/")
     addr_data = homedata_get(f"/address/retrieve/{uprn}/")
+    epc_data = homedata_get(f"/epc-checker/{uprn}/")
 
     if not prop_data and not addr_data:
         raise HTTPException(status_code=404, detail="Property not found")
 
-    # Merge both responses
+    # Merge all responses
     merged = {}
-    if prop_data:
+    if prop_data and "error" not in prop_data:
         merged.update(prop_data)
-    if addr_data:
+    if addr_data and "error" not in addr_data:
         merged.update(addr_data)
+    if epc_data and "error" not in epc_data:
+        merged.update(epc_data)
 
     prop = {
+        # Address
         "uprn": merged.get("uprn"),
         "full_address": merged.get("full_address"),
         "address_line_1": merged.get("address_line_1"),
@@ -79,17 +83,27 @@ def get_property_by_uprn(uprn: int):
         "street_name": merged.get("street_name"),
         "building_number": merged.get("building_number"),
         "town": merged.get("town_name"),
-        "property_type": merged.get("property_type"),
-        "floor_area_sqm": merged.get("epc_floor_area"),
-        "epc_rating": merged.get("current_energy_rating"),
-        "epc_score": merged.get("current_energy_efficiency"),
-        "predicted_price": merged.get("predicted_price"),
-        "last_sold_date": merged.get("last_sold_date"),
-        "last_sold_price": merged.get("last_sold_price"),
         "coordinates": {
             "lat": merged.get("latitude"),
             "lon": merged.get("longitude"),
         } if merged.get("latitude") else None,
+        # Property details
+        "property_type": merged.get("property_type"),
+        "built_form": merged.get("built_form"),
+        "construction_age_band": merged.get("construction_age_band"),
+        "floor_area_sqm": merged.get("epc_floor_area") or merged.get("internal_area_sqm"),
+        "windows_type": merged.get("windows_type"),
+        "fireplaces": merged.get("fireplaces"),
+        # EPC / Energy
+        "epc_rating": merged.get("current_energy_rating"),
+        "epc_score": merged.get("current_energy_efficiency"),
+        "potential_epc_score": merged.get("potential_energy_efficiency"),
+        "last_epc_date": merged.get("last_epc_date"),
+        # Market data
+        "predicted_price": merged.get("predicted_price"),
+        "average_area_price": merged.get("average_area_price"),
+        "last_sold_date": merged.get("last_sold_date"),
+        "last_sold_price": merged.get("last_sold_price"),
     }
 
     # Fetch price history
