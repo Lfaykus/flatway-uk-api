@@ -13,7 +13,7 @@ app.add_middleware(
 )
 
 HOMEDATA_BASE = "https://api.homedata.co.uk/api"
-HOMEDATA_API_KEY = "YOUR_KEY"
+HOMEDATA_API_KEY = "9WOJeF8g.af6JVlqaKIkFKWX9AIEHoc2lLKYRug1s"
 
 def get_headers():
     return {"Authorization": f"Api-Key {HOMEDATA_API_KEY}"}
