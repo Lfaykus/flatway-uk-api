@@ -57,7 +57,7 @@ def autocomplete(q: str = Query(..., description="Address search query")):
 
 @app.get("/property/{uprn}")
 def get_property_by_uprn(uprn: int):
-    # Call all three endpoints in parallel-ish
+    # Core endpoints
     prop_data = homedata_get(f"/properties/{uprn}/")
     addr_data = homedata_get(f"/address/retrieve/{uprn}/")
     epc_data = homedata_get(f"/epc-checker/{uprn}/")
@@ -65,7 +65,7 @@ def get_property_by_uprn(uprn: int):
     if not prop_data and not addr_data:
         raise HTTPException(status_code=404, detail="Property not found")
 
-    # Merge all responses
+    # Merge core data
     merged = {}
     if prop_data and "error" not in prop_data:
         merged.update(prop_data)
@@ -73,6 +73,51 @@ def get_property_by_uprn(uprn: int):
         merged.update(addr_data)
     if epc_data and "error" not in epc_data:
         merged.update(epc_data)
+
+    # Council tax
+    council_tax = homedata_get(f"/council-tax/{uprn}/")
+    council_tax_band = None
+    if council_tax and "error" not in council_tax:
+        council_tax_band = council_tax.get("band") or council_tax.get("council_tax_band")
+
+    # Air quality (single risk type to save calls)
+    air_quality_data = homedata_get(f"/risks/air_quality_today/", params={"uprn": uprn})
+    air_quality = None
+    if air_quality_data and "results" in air_quality_data:
+        for r in air_quality_data["results"]:
+            if r.get("risk_type") == "air_quality_today":
+                air_quality = {"label": r.get("label"), "score": r.get("score")}
+
+    # Schools nearby
+    schools_data = homedata_get(f"/schools/", params={"uprn": uprn, "radius": 1000})
+    schools = []
+    if schools_data and "results" in schools_data:
+        for s in schools_data["results"][:5]:
+            schools.append({
+                "name": s.get("name"),
+                "type": s.get("type"),
+                "ofsted_rating": s.get("ofsted_rating"),
+                "distance_m": s.get("distance_m"),
+            })
+
+    # Comparables
+    comps_data = homedata_get(f"/comparables/", params={"uprn": uprn, "limit": 5})
+    comparables = []
+    if comps_data and "results" in comps_data:
+        for c in comps_data["results"]:
+            comparables.append({
+                "address": c.get("full_address"),
+                "price": c.get("price"),
+                "date": c.get("transaction_date"),
+                "property_type": c.get("property_type"),
+                "floor_area_sqm": c.get("floor_area"),
+            })
+
+    # Price history
+    sales = homedata_get(f"/properties/{uprn}/sales/")
+    price_history = []
+    if sales and "results" in sales:
+        price_history = [{"date": s.get("transaction_date"), "price": s.get("price"), "tenure": s.get("tenure")} for s in sales["results"][:10]]
 
     prop = {
         # Address
@@ -100,18 +145,17 @@ def get_property_by_uprn(uprn: int):
         "potential_epc_score": merged.get("potential_energy_efficiency"),
         "last_epc_date": merged.get("last_epc_date"),
         # Market data
+        "council_tax_band": council_tax_band,
         "predicted_price": merged.get("predicted_price"),
         "average_area_price": merged.get("average_area_price"),
         "last_sold_date": merged.get("last_sold_date"),
         "last_sold_price": merged.get("last_sold_price"),
+        "price_history": price_history,
+        # Area intelligence
+        "air_quality": air_quality,
+        "nearby_schools": schools,
+        "comparables": comparables,
     }
-
-    # Fetch price history
-    sales = homedata_get(f"/properties/{uprn}/sales/")
-    if sales and "results" in sales:
-        prop["price_history"] = [{"date": s.get("transaction_date"), "price": s.get("price"), "tenure": s.get("tenure")} for s in sales["results"][:10]]
-    else:
-        prop["price_history"] = []
 
     return {"property": prop}
 
