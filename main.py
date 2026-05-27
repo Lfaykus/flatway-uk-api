@@ -12,15 +12,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-HOMEDATA_API_KEY = os.getenv("HOMEDATA_API_KEY", "NOT_SET")
 HOMEDATA_BASE = "https://api.homedata.co.uk/api"
 
+def get_headers():
+    key = os.environ.get("HOMEDATA_API_KEY", "NOT_SET")
+    return {"Authorization": f"Api-Key {key}"}
+
 def homedata_get(endpoint: str, params: dict = None):
-    headers = {"Authorization": f"Api-Key {HOMEDATA_API_KEY}"}
     try:
         r = requests.get(
             f"{HOMEDATA_BASE}{endpoint}",
-            headers=headers,
+            headers=get_headers(),
             params=params,
             timeout=10,
         )
@@ -30,12 +32,13 @@ def homedata_get(endpoint: str, params: dict = None):
 
 @app.get("/")
 def root():
-    return {"status": "Flatway UK property API running", "key_set": HOMEDATA_API_KEY != "NOT_SET"}
+    return {"status": "Flatway UK property API running"}
 
 @app.get("/debug")
-def debug(q: str = "10 Downing Street"):
-    raw = homedata_get("/address/find/", params={"q": q, "limit": 3})
-    return {"raw_response": raw, "key_prefix": HOMEDATA_API_KEY[:6] if HOMEDATA_API_KEY != "NOT_SET" else "NOT_SET"}
+def debug():
+    key = os.environ.get("HOMEDATA_API_KEY", "NOT_SET")
+    raw = homedata_get("/address/find/", params={"q": "10 Downing Street", "limit": 3})
+    return {"raw_response": raw, "key_prefix": key[:6] if key != "NOT_SET" else "NOT_SET"}
 
 @app.get("/autocomplete")
 def autocomplete(q: str = Query(..., description="Address search query")):
