@@ -13,10 +13,10 @@ app.add_middleware(
 )
 
 HOMEDATA_BASE = "https://api.homedata.co.uk/api"
+HOMEDATA_API_KEY = "YOUR_KEY"
 
 def get_headers():
-    key = os.environ.get("HOMEDATA_API_KEY", "NOT_SET")
-    return {"Authorization": f"Api-Key {key}"}
+    return {"Authorization": f"Api-Key {HOMEDATA_API_KEY}"}
 
 def homedata_get(endpoint: str, params: dict = None):
     try:
@@ -34,19 +34,13 @@ def homedata_get(endpoint: str, params: dict = None):
 def root():
     return {"status": "Flatway UK property API running"}
 
-@app.get("/debug")
-def debug():
-    key = os.environ.get("HOMEDATA_API_KEY", "NOT_SET")
-    raw = homedata_get("/address/find/", params={"q": "10 Downing Street", "limit": 3})
-    return {"raw_response": raw, "key_prefix": key[:6] if key != "NOT_SET" else "NOT_SET"}
-
 @app.get("/autocomplete")
 def autocomplete(q: str = Query(..., description="Address search query")):
     if not q or len(q) < 3:
         return {"suggestions": [], "type": "address"}
     data = homedata_get("/address/find/", params={"q": q, "limit": 8})
     if not data or "suggestions" not in data:
-        return {"suggestions": [], "type": "address", "debug": data}
+        return {"suggestions": [], "type": "address"}
     suggestions = []
     seen = set()
     for item in data["suggestions"]:
